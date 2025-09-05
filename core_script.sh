@@ -19,14 +19,14 @@ get_next_number() {
     # Найти максимальный номер в папке
     local max_num=0
     if [ -d "$dir" ]; then
-        for file in "$dir"/${prefix}_*.json; do
-            if [ -f "$file" ]; then
-                local num=$(basename "$file" | sed "s/${prefix}_\([0-9]*\)_.*/\1/")
-                if [ "$num" -gt "$max_num" ]; then
-                    max_num=$num
-                fi
+            for file in "$dir"/*_${prefix}.json; do
+        if [ -f "$file" ]; then
+            local num=$(basename "$file" | sed "s/\([0-9]*\)_${prefix}\.json/\1/")
+            if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -gt "$max_num" ]; then
+                max_num=$num
             fi
-        done
+        fi
+    done
     fi
     
     # Вернуть следующий номер с ведущими нулями

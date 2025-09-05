@@ -213,16 +213,15 @@
 
             updateSubmitButton() {
                 const submitBtn = document.getElementById('submit-answer');
-                const selectedOption = document.querySelector('input[name="option"]:checked');
                 const customAnswer = document.getElementById('custom-answer').value.trim();
                 
                 // Кнопка активна если выбран вариант ИЛИ введен собственный ответ
-                const canSubmit = selectedOption || customAnswer;
+                const canSubmit = this.selectedOption || customAnswer;
                 
                 submitBtn.disabled = !canSubmit;
                 
                 if (canSubmit) {
-                    if (selectedOption) {
+                    if (this.selectedOption) {
                         submitBtn.textContent = 'Подтвердить выбор';
                         submitBtn.className = 'w-full bg-blue-600 text-white py-3 px-6 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500';
                     } else if (customAnswer) {
@@ -286,7 +285,11 @@
                         </div>
                     `;
 
-                    optionDiv.addEventListener('click', () => this.selectOption(index + 1, optionDiv));
+                    // Добавляем обработчик после создания innerHTML
+                    optionDiv.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.selectOption(index + 1, optionDiv);
+                    });
                     container.appendChild(optionDiv);
                 });
             }
