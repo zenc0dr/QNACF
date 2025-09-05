@@ -1,0 +1,16 @@
+FROM alpine:latest
+
+WORKDIR /app
+
+# Установить необходимые инструменты
+RUN apk add --no-cache bash jq
+
+# Копировать core_script
+COPY core_script.sh ./
+RUN chmod +x core_script.sh
+
+# Создать папки для данных
+RUN mkdir -p questions answers backups
+
+# Команда по умолчанию - показать справку
+CMD ["./core_script.sh"]
