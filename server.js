@@ -211,21 +211,32 @@ app.post('/api/questions/:id/options', async (req, res) => {
 
 // Сохранить ответ
 app.post('/api/answers', async (req, res) => {
+    const startTime = Date.now();
     try {
-        const { question_id, selected_option, custom_comment } = req.body;
+        const { question_id, selected_option, custom_answer, custom_comment, answer_type } = req.body;
         
-        if (!question_id || selected_option === undefined) {
-            return res.status(400).json({ error: 'ID вопроса и выбранный вариант обязательны' });
+        if (!question_id) {
+            return res.status(400).json({ error: 'ID вопроса обязателен' });
         }
         
-        const result = await runCoreScript('update_answer', question_id, selected_option, `"${custom_comment || ''}"`);
+        if (!selected_option && !custom_answer) {
+            return res.status(400).json({ error: 'Необходимо выбрать вариант или ввести собственный ответ' });
+        }
+        
+        const result = await runCoreScript('update_answer', question_id, selected_option || '', `"${custom_comment || ''}"`, `"${custom_answer || ''}"`, answer_type || 'option');
         
         if (result.success) {
+            logger.logAnswerSubmitted(question_id, selected_option || 'custom', custom_comment);
+            logger.logApiCall('POST', '/api/answers', 200, Date.now() - startTime);
             res.json({ success: true });
         } else {
+            logger.error('Ошибка сохранения ответа', null, { question_id, selected_option, custom_answer, error: result.error });
+            logger.logApiCall('POST', '/api/answers', 500, Date.now() - startTime);
             res.status(500).json({ error: result.error });
         }
     } catch (error) {
+        logger.error('Ошибка сохранения ответа', error);
+        logger.logApiCall('POST', '/api/answers', 500, Date.now() - startTime);
         res.status(500).json({ error: error.message });
     }
 });
@@ -253,6 +264,34 @@ app.post('/api/answers/cancel', async (req, res) => {
     } catch (error) {
         logger.error('Ошибка отмены ответа', error);
         logger.logApiCall('POST', '/api/answers/cancel', 500, Date.now() - startTime);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Перегенерировать вопрос
+app.post('/api/questions/regenerate', async (req, res) => {
+    const startTime = Date.now();
+    try {
+        const { question_id, reason } = req.body;
+        
+        if (!question_id || !reason) {
+            return res.status(400).json({ error: 'ID вопроса и причина перегенерации обязательны' });
+        }
+        
+        const result = await runCoreScript('regenerate_question', question_id, `"${reason}"`);
+        
+        if (result.success) {
+            logger.info(`Вопрос перегенерирован: ${question_id}`, { question_id, reason });
+            logger.logApiCall('POST', '/api/questions/regenerate', 200, Date.now() - startTime);
+            res.json({ success: true, question_id: question_id });
+        } else {
+            logger.error('Ошибка перегенерации вопроса', null, { question_id, reason, error: result.error });
+            logger.logApiCall('POST', '/api/questions/regenerate', 500, Date.now() - startTime);
+            res.status(500).json({ error: result.error });
+        }
+    } catch (error) {
+        logger.error('Ошибка перегенерации вопроса', error);
+        logger.logApiCall('POST', '/api/questions/regenerate', 500, Date.now() - startTime);
         res.status(500).json({ error: error.message });
     }
 });

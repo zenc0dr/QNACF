@@ -89,18 +89,38 @@ update_answer() {
     local question_id="$1"
     local selected_option="$2"
     local custom_comment="$3"
+    local custom_answer="$4"
+    local answer_type="$5"
+    
+    # Определяем summary в зависимости от типа ответа
+    local summary
+    if [ "$answer_type" = "custom" ]; then
+        summary="Пользовательский ответ: ${custom_answer:0:50}..."
+    else
+        summary="Выбран вариант $selected_option: $custom_comment"
+    fi
     
     # Создать JSON структуру ответа
-    cat > "$ANSWERS_DIR/${question_id}_answer.json" << EOF
-{
-  "id": "$question_id",
-  "question_id": "$question_id",
-  "selected_option": $selected_option,
-  "custom_comment": "$custom_comment",
-  "summary": "Выбран вариант $selected_option: $custom_comment",
-  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-}
-EOF
+    local temp_file=$(mktemp)
+    jq -n \
+        --arg id "$question_id" \
+        --arg question_id "$question_id" \
+        --argjson selected_option "${selected_option:-null}" \
+        --arg custom_answer "${custom_answer:-}" \
+        --arg custom_comment "$custom_comment" \
+        --arg answer_type "$answer_type" \
+        --arg summary "$summary" \
+        --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{
+            id: $id,
+            question_id: $question_id,
+            selected_option: $selected_option,
+            custom_answer: ($custom_answer | if . == "" then null else . end),
+            custom_comment: $custom_comment,
+            answer_type: $answer_type,
+            summary: $summary,
+            timestamp: $timestamp
+        }' > "$temp_file" && mv "$temp_file" "$ANSWERS_DIR/${question_id}_answer.json"
     
     # Обновить state.json
     update_state "answered_questions" "$(($(get_state_value "answered_questions") + 1))"
@@ -310,6 +330,35 @@ remove_last_answer() {
     fi
 }
 
+# Функция для перегенерации вопроса
+regenerate_question() {
+    local question_id="$1"
+    local reason="$2"
+    
+    # Проверяем существование вопроса
+    local question_file="$QUESTIONS_DIR/${question_id}_question.json"
+    if [ ! -f "$question_file" ]; then
+        echo "❌ Вопрос $question_id не найден"
+        return 1
+    fi
+    
+    # Создаем бэкап старого вопроса
+    local backup_file="$QUESTIONS_DIR/${question_id}_question_backup_$(date +%Y%m%d_%H%M%S).json"
+    cp "$question_file" "$backup_file"
+    
+    # Обновляем вопрос с пометкой о перегенерации
+    local temp_file=$(mktemp)
+    jq --arg reason "$reason" --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+        .regenerate_reason = $reason |
+        .regenerate_timestamp = $timestamp |
+        .regenerated = true
+    ' "$question_file" > "$temp_file" && mv "$temp_file" "$question_file"
+    
+    echo "✅ Вопрос $question_id помечен для перегенерации"
+    echo "Причина: $reason"
+    echo "$question_id"
+}
+
 # Функция создания следующего вопроса на основе ответов
 create_next_question() {
     local question_text="$1"
@@ -460,11 +509,11 @@ main() {
             add_options_to_question "$2"
             ;;
         "update_answer")
-            if [ -z "$2" ] || [ -z "$3" ]; then
-                echo "Использование: $0 update_answer <question_id> <selected_option> [comment]"
+            if [ -z "$2" ]; then
+                echo "Использование: $0 update_answer <question_id> <selected_option> [comment] [custom_answer] [answer_type]"
                 exit 1
             fi
-            update_answer "$2" "$3" "${4:-}"
+            update_answer "$2" "$3" "${4:-}" "${5:-}" "${6:-option}"
             ;;
         "backup")
             backup_files
@@ -503,6 +552,13 @@ main() {
             ;;
         "remove_last_answer")
             remove_last_answer
+            ;;
+        "regenerate_question")
+            if [ -z "$2" ] || [ -z "$3" ]; then
+                echo "Использование: $0 regenerate_question QUESTION_ID \"Причина перегенерации\""
+                exit 1
+            fi
+            regenerate_question "$2" "$3"
             ;;
         "create_next_question")
             if [ -z "$2" ]; then

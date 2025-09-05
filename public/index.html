@@ -39,6 +39,36 @@
                                 placeholder="Ваши уточнения или дополнения..."
                             ></textarea>
                         </div>
+
+                        <!-- Собственный вариант ответа -->
+                        <div class="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                            <h4 class="text-sm font-medium text-yellow-800 mb-2">Или предложите свой вариант:</h4>
+                            <textarea 
+                                id="custom-answer" 
+                                rows="2" 
+                                class="w-full px-3 py-2 border border-yellow-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                                placeholder="Опишите ваш вариант ответа..."
+                            ></textarea>
+                            <p class="text-xs text-yellow-600 mt-1">Если ни один из предложенных вариантов не подходит</p>
+                        </div>
+
+                        <!-- Перегенерация вопроса -->
+                        <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
+                            <h4 class="text-sm font-medium text-red-800 mb-2">Вопрос не подходит?</h4>
+                            <textarea 
+                                id="regenerate-reason" 
+                                rows="2" 
+                                class="w-full px-3 py-2 border border-red-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                                placeholder="Объясните, почему вопрос не подходит, и что нужно изменить..."
+                            ></textarea>
+                            <button 
+                                id="regenerate-question-btn" 
+                                class="mt-2 bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 transition-colors text-sm"
+                            >
+                                Перегенерировать вопрос
+                            </button>
+                            <p class="text-xs text-red-600 mt-1">AI создаст новый вопрос на основе ваших замечаний</p>
+                        </div>
                         
                         <button 
                             id="submit-answer" 
@@ -120,6 +150,24 @@
                 document.getElementById('submit-answer').addEventListener('click', () => this.submitAnswer());
                 document.getElementById('create-first-question').addEventListener('click', () => this.createFirstQuestion());
                 
+                // Обработчики для новых полей
+                document.getElementById('custom-answer').addEventListener('input', () => {
+                    // Очищаем выбранный вариант при вводе собственного ответа
+                    if (document.getElementById('custom-answer').value.trim()) {
+                        this.selectedOption = null;
+                        document.querySelectorAll('.option-card').forEach(card => {
+                            card.classList.remove('selected');
+                            card.querySelector('.w-3.h-3').classList.add('hidden');
+                        });
+                    }
+                    this.updateSubmitButton();
+                });
+                
+                // Обработчик для кнопки перегенерации
+                document.getElementById('regenerate-question-btn').addEventListener('click', () => {
+                    this.regenerateQuestion();
+                });
+                
                 // Обработчик для кнопки отмены (добавляется динамически)
                 document.addEventListener('click', (e) => {
                     if (e.target && e.target.id === 'cancel-answer-btn') {
@@ -160,6 +208,31 @@
                 document.getElementById('question-content').classList.remove('hidden');
                 document.getElementById('question-text').textContent = this.currentQuestion.question;
                 this.renderOptions();
+                this.updateSubmitButton();
+            }
+
+            updateSubmitButton() {
+                const submitBtn = document.getElementById('submit-answer');
+                const selectedOption = document.querySelector('input[name="option"]:checked');
+                const customAnswer = document.getElementById('custom-answer').value.trim();
+                
+                // Кнопка активна если выбран вариант ИЛИ введен собственный ответ
+                const canSubmit = selectedOption || customAnswer;
+                
+                submitBtn.disabled = !canSubmit;
+                
+                if (canSubmit) {
+                    if (selectedOption) {
+                        submitBtn.textContent = 'Подтвердить выбор';
+                        submitBtn.className = 'w-full bg-blue-600 text-white py-3 px-6 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500';
+                    } else if (customAnswer) {
+                        submitBtn.textContent = 'Отправить собственный ответ';
+                        submitBtn.className = 'w-full bg-yellow-600 text-white py-3 px-6 rounded-md hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500';
+                    }
+                } else {
+                    submitBtn.textContent = 'Выберите вариант или введите свой ответ';
+                    submitBtn.className = 'w-full bg-gray-400 text-white py-3 px-6 rounded-md cursor-not-allowed';
+                }
             }
 
             showCompleted() {
@@ -230,13 +303,24 @@
                 element.querySelector('.w-3.h-3').classList.remove('hidden');
                 
                 this.selectedOption = optionNumber;
-                document.getElementById('submit-answer').disabled = false;
+                
+                // Очищаем собственный ответ при выборе варианта
+                document.getElementById('custom-answer').value = '';
+                
+                // Обновляем кнопку
+                this.updateSubmitButton();
             }
 
             async submitAnswer() {
-                if (!this.selectedOption) return;
-
+                const customAnswer = document.getElementById('custom-answer').value.trim();
                 const customComment = document.getElementById('custom-comment').value;
+                
+                // Проверяем, что выбран вариант ИЛИ введен собственный ответ
+                if (!this.selectedOption && !customAnswer) return;
+
+                // Определяем тип ответа
+                const answerType = this.selectedOption ? 'option' : 'custom';
+                const answerValue = this.selectedOption || customAnswer;
                 
                 try {
                     const response = await fetch('/api/answers', {
@@ -244,8 +328,10 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             question_id: this.currentQuestion.id,
-                            selected_option: this.selectedOption,
-                            custom_comment: customComment
+                            selected_option: answerType === 'option' ? this.selectedOption : null,
+                            custom_answer: answerType === 'custom' ? customAnswer : null,
+                            custom_comment: customComment,
+                            answer_type: answerType
                         })
                     });
 
@@ -254,12 +340,49 @@
                         this.updateUI();
                         this.selectedOption = null;
                         document.getElementById('custom-comment').value = '';
+                        document.getElementById('custom-answer').value = '';
                     } else {
                         alert('Ошибка сохранения ответа');
                     }
                 } catch (error) {
                     console.error('Ошибка:', error);
                     alert('Ошибка сохранения ответа');
+                }
+            }
+
+            async regenerateQuestion() {
+                const reason = document.getElementById('regenerate-reason').value.trim();
+                if (!reason) {
+                    alert('Пожалуйста, объясните, почему вопрос не подходит');
+                    return;
+                }
+
+                if (!confirm('Вы уверены, что хотите перегенерировать вопрос? Текущий вопрос будет заменен новым.')) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/questions/regenerate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            question_id: this.currentQuestion.id,
+                            reason: reason
+                        })
+                    });
+
+                    if (response.ok) {
+                        await this.loadData();
+                        this.updateUI();
+                        document.getElementById('regenerate-reason').value = '';
+                        alert('Вопрос перегенерирован!');
+                    } else {
+                        const error = await response.json();
+                        alert('Ошибка перегенерации: ' + error.error);
+                    }
+                } catch (error) {
+                    console.error('Ошибка:', error);
+                    alert('Ошибка перегенерации вопроса');
                 }
             }
 
